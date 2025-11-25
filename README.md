@@ -84,13 +84,20 @@ The scanner looks for files created by the malware:
 - `.github/workflows/formatter_*.yml` - Secret exfiltration workflow that dumps `toJSON(secrets)`
 
 ### 3. Compromised npm Packages
-Checks for specific malicious versions of packages including:
+Checks for specific malicious versions of **940+ packages** including:
 - `@postman/tunnel-agent` (27% prevalence)
 - `posthog-node`, `posthog-js` (25% prevalence)
 - `@asyncapi/*` packages (17-20% prevalence)
 - `zapier-platform-*` packages
 - `@ensdomains/*` packages
-- And 100+ more packages with specific version matching
+- `@aws-sdk/*` packages (300+ AWS SDK packages)
+- `@langchain/*` packages
+- `@opentelemetry/*` packages
+- `@prisma/*` packages
+- `@tanstack/*` packages
+- And many more with specific version matching
+
+The full list is maintained in `affected-packages.txt` and loaded at runtime.
 
 ### 4. GitHub Security
 - Self-hosted runners with suspicious names (SHA1HULUD pattern)

@@ -50,135 +50,51 @@ SCAN_DIR="$(cd "$SCAN_DIR" 2>/dev/null && pwd)" || {
 # Log file in temp directory
 LOG_FILE="${TMPDIR:-/tmp}/shai-hulud-scan-$(date +%Y%m%d-%H%M%S).log"
 
+# Script directory (for loading external data files)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Known affected packages with SPECIFIC MALICIOUS VERSIONS from Wiz blog
 # Source: https://www.wiz.io/blog/shai-hulud-2-0-ongoing-supply-chain-attack
-# Format: "package_name:malicious_versions" (comma-separated versions)
-declare -A AFFECTED_PACKAGES_VERSIONS=(
-    # High prevalence packages (13-27% of environments)
-    ["@postman/tunnel-agent"]="0.6.4"
-    ["posthog-node"]="4.3.1,4.3.2"
-    ["posthog-js"]="1.194.0,1.194.1"
-    ["@asyncapi/specs"]="6.8.1"
-    ["@asyncapi/openapi-schema-parser"]="3.0.26"
-    ["get-them-args"]="1.3.3,1.3.2"
-    ["shell-exec"]="1.1.4,1.1.3"
-    ["kill-port"]="2.0.2,2.0.1"
+# Loaded from external file: affected-packages.txt
+# Format in file: package_name|malicious_versions (comma-separated)
+declare -A AFFECTED_PACKAGES_VERSIONS
+
+# Load affected packages from external file
+load_affected_packages() {
+    local packages_file="$SCRIPT_DIR/affected-packages.txt"
     
-    # Zapier ecosystem
-    ["zapier-platform-cli"]="18.0.4,18.0.3,18.0.2"
-    ["zapier-platform-core"]="18.0.4,18.0.3,18.0.2"
-    ["zapier-platform-schema"]="18.0.4,18.0.3,18.0.2"
-    ["zapier-scripts"]="7.8.4,7.8.3"
-    ["zapier-async-storage"]="1.0.3,1.0.2,1.0.1"
+    if [[ ! -f "$packages_file" ]]; then
+        echo -e "${YELLOW}Warning: affected-packages.txt not found at $packages_file${NC}"
+        echo -e "${YELLOW}Using embedded minimal package list${NC}"
+        # Fallback to minimal embedded list for critical packages
+        AFFECTED_PACKAGES_VERSIONS=(
+            ["@postman/tunnel-agent"]="0.6.4"
+            ["posthog-node"]="4.3.1,4.3.2"
+            ["posthog-js"]="1.194.0,1.194.1"
+            ["zapier-platform-cli"]="18.0.4,18.0.3,18.0.2"
+            ["zapier-platform-core"]="18.0.4,18.0.3,18.0.2"
+            ["shell-exec"]="1.1.4,1.1.3"
+            ["kill-port"]="2.0.2,2.0.1"
+        )
+        return
+    fi
     
-    # ENS/Ethereum ecosystem
-    ["@ensdomains/ens-contracts"]="1.2.3,1.2.2,1.2.1"
-    ["@ensdomains/ensjs"]="4.0.3,4.0.2"
-    ["@ensdomains/thorin"]="0.6.52,0.6.51"
-    ["@ensdomains/headless-web3-provider"]="1.0.9"
-    ["@ensdomains/content-hash"]="3.1.1,3.1.2"
-    ["@ensdomains/eth-ens-namehash"]="2.0.16"
-    ["@ensdomains/ens-validation"]="0.1.1"
-    ["@ensdomains/dnsprovejs"]="0.5.2,0.5.1"
-    ["@ensdomains/buffer"]="0.1.2,0.1.1"
-    ["@ensdomains/address-encoder"]="1.1.2,1.1.1"
-    ["uniswap-router-sdk"]="1.6.2"
-    ["uniswap-smart-order-router"]="3.16.26"
-    ["uniswap-test-sdk-core"]="4.0.8"
-    
-    # AccordProject
-    ["@accordproject/concerto-analysis"]="3.24.1"
-    ["@accordproject/concerto-linter"]="3.24.1"
-    ["@accordproject/concerto-linter-default-ruleset"]="3.24.1"
-    ["@accordproject/concerto-metamodel"]="3.12.5"
-    ["@accordproject/concerto-types"]="3.24.1"
-    
-    # AsyncAPI (extensive list)
-    ["@asyncapi/avro-schema-parser"]="3.0.26"
-    ["@asyncapi/converter"]="1.6.3,1.6.2"
-    ["@asyncapi/diff"]="0.4.2"
-    ["@asyncapi/dotnet-nats-template"]="0.14.1"
-    ["@asyncapi/generator"]="2.5.1,2.5.2"
-    ["@asyncapi/generator-react-sdk"]="1.1.3,1.1.2"
-    ["@asyncapi/glee"]="0.0.1"
-    ["@asyncapi/html-template"]="2.3.14,2.3.13"
-    ["@asyncapi/java-spring-cloud-stream-template"]="0.15.1"
-    ["@asyncapi/java-spring-template"]="1.6.1"
-    ["@asyncapi/java-template"]="0.3.1"
-    ["@asyncapi/markdown-template"]="1.7.1"
-    ["@asyncapi/modelina"]="4.0.2,4.0.1"
-    ["@asyncapi/nodejs-template"]="3.0.5,3.0.4"
-    ["@asyncapi/nodejs-ws-template"]="0.10.13"
-    ["@asyncapi/parser"]="3.4.1,3.4.2"
-    ["@asyncapi/protobuf-schema-parser"]="3.3.1"
-    ["@asyncapi/python-paho-template"]="0.2.15"
-    ["@asyncapi/raml-dt-schema-parser"]="4.0.26"
-    ["@asyncapi/react-component"]="2.0.1"
-    ["@asyncapi/server-api"]="1.1.1"
-    ["@asyncapi/studio"]="0.0.1"
-    ["@asyncapi/ts-nats-template"]="0.0.1"
-    
-    # React Native packages
-    ["react-native-modest-checkbox"]="3.3.1"
-    ["react-native-modest-storage"]="2.1.1"
-    ["react-native-phone-call"]="1.2.2,1.2.1"
-    ["react-native-retriable-fetch"]="2.0.1,2.0.2"
-    ["react-native-use-modal"]="1.0.3"
-    ["react-native-view-finder"]="1.2.2,1.2.1"
-    ["react-native-websocket"]="1.0.4,1.0.3"
-    ["react-native-worklet-functions"]="3.3.3"
-    
-    # Svelte packages
-    ["svelte-autocomplete-select"]="1.1.1"
-    ["svelte-toasty"]="1.1.3,1.1.2"
-    
-    # Other affected packages
-    ["02-echo"]="0.0.7"
-    ["tcsp"]="2.0.2"
-    ["tcsp-draw-test"]="1.0.5"
-    ["tcsp-test-vd"]="2.4.4"
-    ["solomon-api-stories"]="1.0.2"
-    ["solomon-v3-stories"]="1.15.6"
-    ["solomon-v3-ui-wrapper"]="1.6.1"
-    ["rediff"]="1.0.5"
-    ["rediff-viewer"]="0.0.7"
-    ["rollup-plugin-httpfile"]="0.2.1"
-    ["vite-plugin-httpfile"]="0.2.1"
-    ["webpack-loader-httpfile"]="0.2.1"
-    ["trigo-react-app"]="4.1.2"
-    ["template-lib"]="1.1.4,1.1.3"
-    ["template-micro-service"]="1.0.3,1.0.2"
-    ["tenacious-fetch"]="2.3.3,2.3.2"
-    ["typefence"]="1.2.2,1.2.3"
-    ["typeorm-orbit"]="0.2.27"
-    ["undefsafe-typed"]="1.0.4,1.0.3"
-    ["token.js-fork"]="0.7.32"
-    ["stoor"]="2.3.2"
-    ["stat-fns"]="1.0.1"
-    ["super-commit"]="1.0.1"
-    ["sort-by-distance"]="2.0.1"
-    ["set-nested-prop"]="2.0.1,2.0.2"
-    ["samesame"]="1.0.3"
-    ["redux-router-kit"]="1.2.2,1.2.4,1.2.3"
-    ["react-qr-image"]="1.1.1"
-    ["web-scraper-mcp"]="1.1.4"
-    ["web-types-htmx"]="0.1.1"
-    ["web-types-lit"]="0.1.1"
-    ["wenk"]="1.0.9,1.0.10"
-    ["uplandui"]="0.5.4"
-    ["upload-to-play-store"]="1.0.2,1.0.1"
-    ["url-encode-decode"]="1.0.2,1.0.1"
-    ["use-unsaved-changes"]="1.0.9"
-    ["valid-south-african-id"]="1.0.3"
-    ["zuper-cli"]="1.0.1"
-    ["zuper-sdk"]="1.0.57"
-    ["zuper-stream"]="2.0.9"
-    ["kill-port-process"]="3.2.2,3.2.1"
-    ["fast-jwt"]="4.0.6,4.0.5"
-    ["graphql-ws"]="5.16.2,5.16.1"
-    ["primus-graphql"]="5.1.1"
-    ["notistack-v4"]="3.0.2"
-)
+    # Read packages from file
+    while IFS='|' read -r pkg_name versions || [[ -n "$pkg_name" ]]; do
+        # Skip comments and empty lines
+        [[ "$pkg_name" =~ ^#.*$ ]] && continue
+        [[ -z "$pkg_name" ]] && continue
+        [[ -z "$versions" ]] && continue
+        
+        # Trim whitespace
+        pkg_name="${pkg_name#"${pkg_name%%[![:space:]]*}"}"
+        pkg_name="${pkg_name%"${pkg_name##*[![:space:]]}"}"
+        versions="${versions#"${versions%%[![:space:]]*}"}"
+        versions="${versions%"${versions##*[![:space:]]}"}"
+        
+        AFFECTED_PACKAGES_VERSIONS["$pkg_name"]="$versions"
+    done < "$packages_file"
+}
 
 # Malicious files created by the worm
 MALICIOUS_FILES=(
@@ -872,6 +788,12 @@ main() {
     
     # Check dependencies
     check_dependencies
+    
+    # Load affected packages from external file
+    load_affected_packages
+    local pkg_count=${#AFFECTED_PACKAGES_VERSIONS[@]}
+    echo -e "${GREEN}Loaded $pkg_count affected packages from database${NC}"
+    echo ""
     
     # Initialize log file
     {
